@@ -3,15 +3,18 @@ import language_tool_python
 import nltk
 from nltk.tokenize import word_tokenize, sent_tokenize
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-from sentence_transformers import SentenceTransformer
-import numpy as np
 
 class CommunicationAnalyzer:
     def __init__(self, config):
         self.config = config
-        self.tool = language_tool_python.LanguageTool(config.LANGUAGE_TOOL_LANG)
         self.sentiment_analyzer = SentimentIntensityAnalyzer()
-        self.sentence_model = SentenceTransformer(config.SENTENCE_MODEL)
+        
+        # Use public LanguageTool server to avoid download issues
+        try:
+            self.tool = language_tool_python.LanguageToolPublic('en-US')
+        except:
+            # Fallback: try local server, but don't fail if it doesn't work
+            self.tool = None
         
         # Download required NLTK data
         self._download_nltk_data()
@@ -73,15 +76,25 @@ class CommunicationAnalyzer:
         """Analyze salutation level"""
         transcript_lower = transcript.lower()
         
-        for level, data in self.config.SALUTATION_LEVELS.items():
-            if level == 'none':
-                continue
-                
-            for keyword in data['keywords']:
-                if keyword in transcript_lower:
-                    return data['score']
+        # Excellent salutations
+        excellent_keywords = ['excited to introduce', 'feeling great', 'thrilled to share', 'honored to be']
+        for keyword in excellent_keywords:
+            if keyword in transcript_lower:
+                return 5
         
-        return self.config.SALUTATION_LEVELS['none']['score']
+        # Good salutations
+        good_keywords = ['good morning', 'good afternoon', 'good evening', 'good day', 'hello everyone']
+        for keyword in good_keywords:
+            if keyword in transcript_lower:
+                return 4
+        
+        # Normal salutations
+        normal_keywords = ['hi', 'hello', 'hey']
+        for keyword in normal_keywords:
+            if keyword in transcript_lower:
+                return 2
+        
+        return 0
 
     def _analyze_keyword_presence(self, transcript):
         """Analyze keyword presence"""
@@ -89,15 +102,17 @@ class CommunicationAnalyzer:
         must_have_score = 0
         good_to_have_score = 0
         
-        # Check must-have keywords
-        for keyword in self.config.KEYWORD_CATEGORIES['must_have']:
+        # Must-have keywords (4 points each)
+        must_have_keywords = ['name', 'age', 'class', 'school', 'family', 'hobbies']
+        for keyword in must_have_keywords:
             if self._fuzzy_match(keyword, transcript_lower):
-                must_have_score += 4  # 4 points per must-have keyword
+                must_have_score += 4
         
-        # Check good-to-have keywords (max 10 points)
-        for keyword in self.config.KEYWORD_CATEGORIES['good_to_have']:
+        # Good-to-have keywords (2 points each, max 10 points)
+        good_to_have_keywords = ['from', 'goal', 'dream', 'fun fact', 'unique', 'strength', 'achievement']
+        for keyword in good_to_have_keywords:
             if self._fuzzy_match(keyword, transcript_lower):
-                good_to_have_score += 2  # 2 points per good-to-have keyword
+                good_to_have_score += 2
         
         return must_have_score + min(good_to_have_score, 10)
 
@@ -119,22 +134,17 @@ class CommunicationAnalyzer:
         """Analyze speech rate"""
         words_per_minute = (total_words / self.config.DEFAULT_DURATION_SEC) * 60
         
-        for category, (min_wpm, max_wpm) in self.config.SPEECH_RATE_THRESHOLDS.items():
-            if min_wpm <= words_per_minute <= max_wpm:
-                return self._get_speech_rate_score(category)
-        
-        return 2  # Default to lowest score
-
-    def _get_speech_rate_score(self, category):
-        """Get score for speech rate category"""
-        scores = {
-            'too_fast': 2,
-            'fast': 6,
-            'ideal': 10,
-            'slow': 6,
-            'too_slow': 2
-        }
-        return scores.get(category, 2)
+        # Speech rate thresholds
+        if words_per_minute > 160:
+            return 2  # Too fast
+        elif 141 <= words_per_minute <= 160:
+            return 6  # Fast
+        elif 111 <= words_per_minute <= 140:
+            return 10  # Ideal
+        elif 81 <= words_per_minute <= 110:
+            return 6  # Slow
+        else:
+            return 2  # Too slow
 
     def _analyze_language_grammar(self, transcript, words):
         """Analyze language and grammar metrics"""
@@ -145,8 +155,46 @@ class CommunicationAnalyzer:
 
     def _analyze_grammar(self, transcript, total_words):
         """Analyze grammar errors"""
-        matches = self.tool.check(transcript)
-        errors_per_100_words = (len(matches) / total_words) * 100 if total_words > 0 else 0
+        try:
+            if self.tool is None:
+                # If LanguageTool is not available, use a basic grammar check
+                return self._basic_grammar_check(transcript, total_words)
+            
+            matches = self.tool.check(transcript)
+            errors_per_100_words = (len(matches) / total_words) * 100 if total_words > 0 else 0
+            grammar_score = 1 - min(errors_per_100_words / 10, 1)
+            
+            if grammar_score >= 0.9:
+                return 10
+            elif grammar_score >= 0.7:
+                return 8
+            elif grammar_score >= 0.5:
+                return 6
+            elif grammar_score >= 0.3:
+                return 4
+            else:
+                return 2
+        except:
+            # Fallback to basic grammar check
+            return self._basic_grammar_check(transcript, total_words)
+
+    def _basic_grammar_check(self, transcript, total_words):
+        """Basic grammar check as fallback"""
+        # Simple checks for common errors
+        common_errors = 0
+        
+        # Check for basic punctuation
+        sentences = sent_tokenize(transcript)
+        for sentence in sentences:
+            if len(sentence.strip()) > 0 and not sentence.strip()[-1] in ['.', '!', '?']:
+                common_errors += 1
+        
+        # Check for capitalization in sentences
+        for sentence in sentences:
+            if len(sentence.strip()) > 0 and not sentence.strip()[0].isupper():
+                common_errors += 1
+        
+        errors_per_100_words = (common_errors / total_words) * 100 if total_words > 0 else 0
         grammar_score = 1 - min(errors_per_100_words / 10, 1)
         
         if grammar_score >= 0.9:
@@ -155,10 +203,8 @@ class CommunicationAnalyzer:
             return 8
         elif grammar_score >= 0.5:
             return 6
-        elif grammar_score >= 0.3:
-            return 4
         else:
-            return 2
+            return 4
 
     def _analyze_vocabulary(self, words):
         """Analyze vocabulary richness using TTR"""
@@ -188,8 +234,12 @@ class CommunicationAnalyzer:
         filler_count = 0
         transcript_lower = transcript.lower()
         
-        for filler in self.config.FILLER_WORDS:
-            # Count occurrences of filler words
+        filler_words = [
+            'um', 'uh', 'like', 'you know', 'so', 'actually', 'basically', 
+            'right', 'i mean', 'well', 'kinda', 'sort of', 'okay', 'hmm', 'ah'
+        ]
+        
+        for filler in filler_words:
             filler_count += len(re.findall(r'\b' + re.escape(filler) + r'\b', transcript_lower))
         
         filler_rate = (filler_count / len(words)) * 100
@@ -207,27 +257,36 @@ class CommunicationAnalyzer:
 
     def _analyze_engagement(self, transcript):
         """Analyze engagement through sentiment"""
-        sentiment_scores = self.sentiment_analyzer.polarity_scores(transcript)
-        positive_score = sentiment_scores['pos']
-        
-        if positive_score >= 0.9:
-            return 15
-        elif positive_score >= 0.7:
-            return 12
-        elif positive_score >= 0.5:
+        try:
+            sentiment_scores = self.sentiment_analyzer.polarity_scores(transcript)
+            positive_score = sentiment_scores['pos']
+            
+            if positive_score >= 0.9:
+                return 15
+            elif positive_score >= 0.7:
+                return 12
+            elif positive_score >= 0.5:
+                return 9
+            elif positive_score >= 0.3:
+                return 6
+            else:
+                return 3
+        except:
+            # If sentiment analysis fails, return a default score
             return 9
-        elif positive_score >= 0.3:
-            return 6
-        else:
-            return 3
 
     def _calculate_overall_score(self, criterion_scores):
         """Calculate overall score from criterion scores"""
-        total_score = 0
-        
-        for criterion, weight in self.config.RUBRIC_WEIGHTS.items():
-            score = criterion_scores.get(criterion, 0)
-            total_score += score
+        total_score = (
+            criterion_scores['salutation'] +
+            criterion_scores['keyword_presence'] +
+            criterion_scores['flow'] +
+            criterion_scores['speech_rate'] +
+            criterion_scores['grammar'] +
+            criterion_scores['vocabulary'] +
+            criterion_scores['clarity'] +
+            criterion_scores['engagement']
+        )
         
         return min(100, total_score)
 
@@ -237,12 +296,14 @@ class CommunicationAnalyzer:
 
     def _generate_detailed_feedback(self, transcript, criterion_scores):
         """Generate detailed feedback for each criterion"""
+        grammar_method = "Public Server" if self.tool else "Basic Check"
+        
         return {
             'salutation': f"Score: {criterion_scores['salutation']}/5 - {self._get_salutation_feedback(transcript)}",
             'keyword_presence': f"Score: {criterion_scores['keyword_presence']}/30 - Includes essential personal details",
             'flow': f"Score: {criterion_scores['flow']}/5 - Proper introduction structure",
             'speech_rate': f"Score: {criterion_scores['speech_rate']}/10 - Appropriate pacing",
-            'grammar': f"Score: {criterion_scores['grammar']}/10 - Language accuracy",
+            'grammar': f"Score: {criterion_scores['grammar']}/10 - Language accuracy ({grammar_method})",
             'vocabulary': f"Score: {criterion_scores['vocabulary']}/10 - Word variety",
             'clarity': f"Score: {criterion_scores['clarity']}/15 - Clear expression",
             'engagement': f"Score: {criterion_scores['engagement']}/15 - Positive tone"
@@ -252,12 +313,11 @@ class CommunicationAnalyzer:
         """Get specific feedback for salutation"""
         transcript_lower = transcript.lower()
         
-        for level, data in self.config.SALUTATION_LEVELS.items():
-            if level == 'none':
-                continue
-                
-            for keyword in data['keywords']:
-                if keyword in transcript_lower:
-                    return f"Used {level} level salutation"
-        
-        return "No appropriate salutation found"
+        if any(phrase in transcript_lower for phrase in ['excited to introduce', 'feeling great', 'thrilled to share']):
+            return "Used excellent level salutation"
+        elif any(phrase in transcript_lower for phrase in ['good morning', 'good afternoon', 'good evening', 'hello everyone']):
+            return "Used good level salutation"
+        elif any(phrase in transcript_lower for phrase in ['hi', 'hello', 'hey']):
+            return "Used normal level salutation"
+        else:
+            return "No appropriate salutation found"
