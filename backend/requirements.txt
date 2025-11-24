@@ -1,1 +1,10 @@
-g
+flask==2.3.3
+flask-cors==4.0.0
+language-tool-python==2.7.1
+nltk==3.8.1
+textstat==0.7.4
+vaderSentiment==3.3.2
+sentence-transformers==2.2.2
+pandas==2.0.3
+numpy==1.24.3
+python-dotenv==1.0.0
