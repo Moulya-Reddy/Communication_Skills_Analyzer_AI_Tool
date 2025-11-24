@@ -1,1 +1,53 @@
-s
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Communication Skills Analyzer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Communication Skills Analyzer</h1>
+            <p>Analyze and score self-introduction transcripts using AI</p>
+        </header>
+
+        <div class="main-content">
+            <div class="input-section">
+                <h2>Enter Transcript</h2>
+                <textarea id="transcriptInput" placeholder="Paste your self-introduction transcript here..."></textarea>
+                <button id="analyzeBtn">Analyze Transcript</button>
+            </div>
+
+            <div class="results-section" id="resultsSection" style="display: none;">
+                <h2>Analysis Results</h2>
+                
+                <div class="overall-score">
+                    <h3>Overall Score</h3>
+                    <div class="score-circle">
+                        <span id="overallScore">0</span>
+                    </div>
+                </div>
+
+                <div class="detailed-scores">
+                    <h3>Detailed Breakdown</h3>
+                    <div id="criterionScores" class="scores-grid"></div>
+                </div>
+
+                <div class="feedback">
+                    <h3>Detailed Feedback</h3>
+                    <div id="detailedFeedback" class="feedback-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="loading" id="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>Analyzing transcript...</p>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
