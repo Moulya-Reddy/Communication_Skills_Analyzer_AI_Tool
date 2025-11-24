@@ -1,6 +1,6 @@
 class CommunicationAnalyzerApp {
     constructor() {
-        this.apiUrl = 'http://localhost:5000/analyze';
+        this.apiUrl = 'http://localhost:5001/analyze';
         this.initializeEventListeners();
     }
 
