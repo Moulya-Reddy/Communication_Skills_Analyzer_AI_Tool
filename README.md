@@ -220,10 +220,6 @@ MAX_TRANSCRIPT_LENGTH=5000
 4. Test thoroughly
 5. Submit a pull request
 
-## 📄 License
-
-This project is developed as part of the Nirmaan AI Intern Case Study.
-
 ## 🆘 Support
 
 For issues and questions:
